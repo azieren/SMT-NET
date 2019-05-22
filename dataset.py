@@ -1,8 +1,12 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
+from torch import nn
+from torch.autograd import Variable
 
-def import_data (path, test = False):
+
+def import_data(path, test = False):
 		data = []
 		label = []
 		with open(path, 'r') as f:
@@ -19,7 +23,34 @@ def import_data (path, test = False):
 					data.append(l)
 						
 		return np.array(data), np.array(label)
-        
+
+
+def network_train(x_train, y_train):
+	input_size = x_train.shape[1]
+	hidden_size = 1000
+	output_size = 1
+
+	x_train = Variable(torch.FloatTensor(x_train))
+	y_train = Variable(torch.FloatTensor(y_train))
+
+	model = nn.Sequential(nn.Linear(input_size, hidden_size),
+						  nn.ReLU(),
+						  nn.Linear(hidden_size, output_size),
+						  nn.Sigmoid())
+
+	criterion = torch.nn.MSELoss()
+
+	optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+
+	for epoch in range(1000):
+		y_pred = model(x_train)
+		loss = criterion(y_pred, y_train)
+		print('epoch: ', epoch, ' loss: ', loss.item())
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+
+
 if __name__ == '__main__': 
 	# Load Data
 	path_train = os.path.join(os.path.dirname(__file__), 'pa2_train.csv')
@@ -29,9 +60,4 @@ if __name__ == '__main__':
 	x_train, y_train = import_data(path_train)
 	x_val, y_val = import_data(path_val)
 	x_test, _ = import_data(path_test, test = True)
-	
-
-	#x_train = x_train[:1000]
-	#y_train = y_train[:1000]
-	print(len(x_train[0]), x_train[0][-1], len(y_train))
-	dim = len(x_train)
+	network_train(x_train, y_train)
