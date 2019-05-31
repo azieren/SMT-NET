@@ -43,7 +43,7 @@ def network_train(x_train, y_train, x_val, y_val):
 	criterion = torch.nn.BCELoss()
 
 	optimizer = torch.optim.SGD(model.parameters(), lr=0.0000001)
-	losses, accs = [], []
+	losses, val_accs, train_accs = [], [], []
 	for epoch in range(50):
 		optimizer.zero_grad()
 		y_pred = model(x_train)
@@ -52,18 +52,20 @@ def network_train(x_train, y_train, x_val, y_val):
 		optimizer.step()
 
 		print('epoch: ', epoch, ' loss: ', loss.item())
-		losses.append(loss.item())
 		if epoch % 10 == 0:
+			losses.append(loss.item())
 			acc_train = evaluate(y_pred, y_train)
 			y_pred_val = model(x_val)
 			acc_val = evaluate(y_pred_val, y_val)
-			accs.append(acc_val)
+			val_accs.append(acc_val)
+			train_accs.append(acc_train)
 			print('acc val: {}, train: {}'.format(acc_val.item(), acc_train.item()))
-			if len(accs) != 0 and acc_val.item() > max(accs):
+			if len(val_accs) != 0 and acc_val.item() > max(val_accs):
 				torch.save(model, "./optimal_model.p")
 
 	plot_data(losses, "training loss")
-	plot_data(accs, "validation accuracy")
+	plot_data(val_accs, "validation accuracy")
+	plot_data(train_accs, "training accuracy")
 
 
 def evaluate(Y, Y_gt):
