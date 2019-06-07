@@ -1,31 +1,79 @@
 import os
-from pysmt.shortcuts import Symbol, And, GE, LT, Plus, Equals, Int, Real, Solver, Or
+from pysmt.shortcuts import Symbol, And, GE, LT, Plus, Equals, Int, Real, Solver, Or, Times, Pow
 from pysmt.typing import INT, REAL, ArrayType
+from dataset import import_data
 
+
+class SMTNet:
+    def __init__(self, n, h):
+        self.n = n
+        self.dim_list = [n] + h + [2]
+        self.create_weights()
+    
+    def create_weights(self):
+        self.net = {}
+        for i, h in enumerate(self.dim_list[:-1]):
+            weight = [[Symbol("w{}_{}_{}".format(i, j, k), REAL) for j in range(h)] for k in range(self.dim_list[i+1])]
+            bias = [Symbol("b{}_{}" .format(i, j), REAL) for j in range(self.dim_list[i+1])]
+            self.net[i] = (weight, bias)
+        return
+    
+    def regularize(self, l = 0.5):
+        
+        w_reg_list = []
+        for i, (weight, _) in self.net.items(): 
+            print(i)
+            w_reg_list.append(Plus([Pow(w, Int(2)) for w_r in weight for w in w_r]))           
+            print(w_reg_list[-1])
+        regularize = And([And(GE(w, Real(-l)), LT(w, Real(l))) for w in w_reg_list])
+        return regularize
+
+    def feed_data(self, X, Y):
+        formula = []
+        for x, y in zip(X, Y):
+            x_formula = []
+            for i, (weight, bias) in self.net.items(): 
+                x_formula.append(Times(Plus([Pow(w, Int(2)) for w_r in weight for w in w_r]), Real(l)))
+                break
+
+        return
+
+
+
+   
 
 if __name__ == '__main__':
-    weight_1 = [[0.] * 10] * 784
-    bias_1 = [0.] * 10
-    weight_2 = [[0.]*2]*10
-    bias_2 = [0.] * 2
+    path_train = os.path.join(os.path.dirname(__file__), 'pa2_train.csv')
+    path_val = os.path.join(os.path.dirname(__file__), 'pa2_valid.csv')
+    path_test = os.path.join(os.path.dirname(__file__), 'pa2_test_no_label.csv')
 
-    weight_1 = [Symbol("w1 " + str(i) + " " + str(j), REAL) for i in range(len(weight_1)) for j in range(len(weight_1[i]))]
-    bias_1 = [Symbol("b1 " + str(i), REAL) for i in range(len(bias_1))]
-    weight_2 = [Symbol("w2 " + str(i) + " " + str(j), REAL) for i in range(len(weight_2)) for j in range(len(weight_2[i]))]
-    bias_2 = [Symbol("b2 " + str(i), REAL) for i in range(len(bias_2))]
+    x_train, y_train = import_data(path_train)
+    #x_val, y_val = import_data(path_val)
+    #x_test, y_test = import_data(path_test, test = True)
 
-    letters = set(weight_1+bias_1+weight_2+bias_2)
+    N, n = x_train.shape
+    
+    """weight_1 = [Symbol("w1_" + str(i) + "_" + str(j), REAL) for i in range(n) for j in range(h1)]
+    bias_1 = [Symbol("b1_" + str(i), REAL) for i in range(h1)]
+    weight_2 = [Symbol("w2_" + str(i) + "_" + str(j), REAL) for i in range(h1) for j in range(2)]
+    bias_2 = [Symbol("b2_" + str(i), REAL) for i in range(2)]
 
-    # All letters between 1 and 10
-    domains = And([And(GE(l, Real(-1)), LT(l, Real(1))) for l in letters])
-    formula = And(domains)
+
+    print(weight_1)"""
+
+    smt_net = SMTNet(3, [4])
+
+    regularize = smt_net.regularize()
+    print(regularize)
+    
+    formula = And(regularize)
 
     print("Serialization of the formula:")
-    print(formula)
+    #print(formula)
 
 
     with Solver(name="msat") as solver:
-        solver.add_assertion(domains)
+        solver.add_assertion(formula)
         if not solver.solve():
             print("Domain is not SAT!!!")
             exit()
