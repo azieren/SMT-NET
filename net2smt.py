@@ -27,18 +27,31 @@ class SMTNet:
             print(w_reg_list[-1])
         regularize = And([And(GE(w, Real(-l)), LT(w, Real(l))) for w in w_reg_list])
         return regularize
-
+    
     def feed_data(self, X, Y):
         formula = []
         for x, y in zip(X, Y):
+            x = x[100:103]
             x_formula = []
             for i, (weight, bias) in self.net.items(): 
-                x_formula.append(Times(Plus([Pow(w, Int(2)) for w_r in weight for w in w_r]), Real(l)))
-                break
-
-        return
-
-
+                if i == 0:
+                    x_hidden = []
+                    for r, w_r in enumerate(weight):
+                        x_hidden.append(Plus([Plus(Times(w, Real(float(x[c]))), bias[r]) for c, w in enumerate(w_r)]))
+                    x = x_hidden
+                else:
+                    x_hidden = []
+                    for r, w_r in enumerate(weight):
+                        x_hidden.append(Plus([Plus(Times(w, x[c]), bias[r]) for c, w in enumerate(w_r)]))
+                    x = x_hidden
+                ## Add activation function
+            if np.argmax(y) == 0:
+                x_formula.append(And(GE(x[0], Real(0.5)), LT(x[1], Real(0.5))))
+            else:
+                x_formula.append(And(GE(x[1], Real(0.5)), LT(x[0], Real(0.5))))
+                
+            x_formula.append(x)
+        return And(x_formula)
 
    
 
