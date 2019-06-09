@@ -3,8 +3,8 @@ import numpy as np
 from pysmt.shortcuts import Symbol, And, GE, LT, Plus, Equals, Int, Real, Solver, Or, Times, Pow, NotEquals, Max
 from pysmt.shortcuts import is_sat, get_formula_size
 from pysmt.typing import INT, REAL, ArrayType
-from dataset import import_data
-
+from network import import_data
+import network
 
 class SMTNet:
     def __init__(self, n, h, activation='relu'):
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     #y_train = np.array([[1,0], [0,1], [0,1], [1,0]])
 
     N, n = x_train.shape
-    smt_net = SMTNet(n, [50])
+    smt_net = SMTNet(n, [10])
 
     formula = smt_net.feed_data(x_train[:100], y_train[:100])
     regularize = smt_net.non_zero()
@@ -162,9 +162,13 @@ if __name__ == '__main__':
     
     smt_net.solve(formula)
 
+    weights = []
     for i,(w,b) in smt_net.net.items():
         print("Weight: ", i, w)
         print("Bias: ", i, b)
+        weights.append((i, w))
+
+    network.main_network(weights)
 
     #acc_train = smt_net.test(x_train, y_train)
     acc_train = smt_net.test(x_train[:200], y_train[:200])
