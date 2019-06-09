@@ -25,7 +25,7 @@ def import_data(path, test = False):
 		return np.array(data), np.array(label)
 
 
-def network_train(x_train, y_train, x_val, y_val):
+def network_train(x_train, y_train, x_val, y_val, initialized_values=None):
 	input_size = x_train.shape[1]
 	hidden_size = 10
 	output_size = 2
@@ -39,6 +39,10 @@ def network_train(x_train, y_train, x_val, y_val):
 						  nn.ReLU(),
 						  nn.Linear(hidden_size, output_size),
 						  nn.Softmax())
+
+	if initialized_values is not None:
+		for item_i, item in enumerate(initialized_values):
+			model[item_i * 2].weight.data = torch.Tensor(item[1])
 
 	criterion = torch.nn.BCELoss()
 
@@ -92,7 +96,7 @@ def plot_data(value, title):
 	plt.clf()
 
 
-if __name__ == '__main__': 
+def main_network(initialized_values):
 	# Load Data
 	path_train = os.path.join(os.path.dirname(__file__), 'pa2_train.csv')
 	path_val = os.path.join(os.path.dirname(__file__), 'pa2_valid.csv')
