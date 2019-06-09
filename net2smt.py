@@ -1,5 +1,6 @@
 import os
-from pysmt.shortcuts import Symbol, And, GE, LT, Plus, Equals, Int, Real, Solver, Or, Times, Pow
+import numpy as np
+from pysmt.shortcuts import Symbol, And, GE, LT, Plus, Equals, Int, Real, Solver, Or, Times, Pow, NotEquals
 from pysmt.typing import INT, REAL, ArrayType
 from dataset import import_data
 
@@ -8,32 +9,44 @@ class SMTNet:
     def __init__(self, n, h):
         self.n = n
         self.dim_list = [n] + h + [2]
+        self.net_formula = {}
+        self.net = {}
         self.create_weights()
     
-    def create_weights(self):
-        self.net = {}
+    def create_weights(self):      
         for i, h in enumerate(self.dim_list[:-1]):
             weight = [[Symbol("w{}_{}_{}".format(i, j, k), REAL) for j in range(h)] for k in range(self.dim_list[i+1])]
             bias = [Symbol("b{}_{}" .format(i, j), REAL) for j in range(self.dim_list[i+1])]
-            self.net[i] = (weight, bias)
+            self.net_formula[i] = (weight, bias)
+            self.net[i] = None
         return
     
-    def regularize(self, l = 0.5):
-        
+    def regularize(self, l = 0.5):       
         w_reg_list = []
-        for i, (weight, _) in self.net.items(): 
-            print(i)
-            w_reg_list.append(Plus([Pow(w, Int(2)) for w_r in weight for w in w_r]))           
-            print(w_reg_list[-1])
+        for i, (weight, _) in self.net_formula.items(): 
+            #print(i)
+            w_reg_list.append(Plus([Pow(w, Real(2)) for w_r in weight for w in w_r]))           
+            #print(w_reg_list[-1])
         regularize = And([And(GE(w, Real(-l)), LT(w, Real(l))) for w in w_reg_list])
         return regularize
-    
+        
+    def non_zero(self, l = 0.5): 
+        w_reg_list = []
+        for (weights,bias) in self.net_formula.values():
+            for w_r,b in zip(weights, bias):
+                for w in w_r:
+                    w_reg_list.append(NotEquals(w, Real(0)))
+                #w_reg_list.append(NotEquals(b, Real(0)))
+        #w_reg_list = np.random.permutation(w_reg_list)[10]
+        regularize = And(w_reg_list)
+        print(regularize)
+        return regularize
+        
     def feed_data(self, X, Y):
         formula = []
         for x, y in zip(X, Y):
-            x = x[100:103]
             x_formula = []
-            for i, (weight, bias) in self.net.items(): 
+            for i, (weight, bias) in self.net_formula.items(): 
                 if i == 0:
                     x_hidden = []
                     for r, w_r in enumerate(weight):
@@ -46,52 +59,84 @@ class SMTNet:
                     x = x_hidden
                 ## Add activation function
             if np.argmax(y) == 0:
-                x_formula.append(And(GE(x[0], Real(0.5)), LT(x[1], Real(0.5))))
+                x_formula.append(GE(x[0], x[1]))
             else:
-                x_formula.append(And(GE(x[1], Real(0.5)), LT(x[0], Real(0.5))))
-                
-            x_formula.append(x)
+                x_formula.append(GE(x[1], x[0]))                
         return And(x_formula)
-
-   
+        
+    def solve(self, formula):
+        print("Serialization of the formula:")
+        with Solver(name="z3") as solver:
+            solver.add_assertion(formula)
+            if not solver.solve():
+                print("Domain is not SAT!!!")
+                exit()
+            if solver.solve():
+                for i, (weight, bias) in self.net_formula.items():
+                    w_curr = []
+                    b_curr = []
+                    for w_row, b in zip(weight, bias):
+                        w_r = []
+                        for w in w_row: 
+                            value = float(solver.get_value(w).constant_value())
+                            w_r.append(value)
+                        b_curr.append(float(solver.get_value(b).constant_value()))  
+                        w_curr.append(w_r)                
+                    self.net[i] = (np.array(w_curr, dtype=float).T, np.array(b_curr, dtype=float))         
+            else:
+                print("No solution found")          
+                    
+    def test(self, X, Y):
+        tp, fp, tn, fn = 0, 0, 0, 0
+        for x, y in zip(X, Y):
+            output = x
+            for i,(w,b) in self.net.items():
+                output = np.dot(w.T, output) + b           
+            y_gt, y_pred = np.argmax(y), np.argmax(output)
+            if y_gt == 0 and y_pred == 0:
+                tp += 1
+            elif y_gt == 1 and y_pred == 0:
+                fn += 1
+            elif y_gt == 0 and y_pred == 1:
+                fp += 1
+            else:
+                tn += 1
+        acc = 1.0*(tn + tp)/(tp + tn + fp + fn)        
+        return acc     
 
 if __name__ == '__main__':
+    acc_train, acc_val = 0.0, 0.0
     path_train = os.path.join(os.path.dirname(__file__), 'pa2_train.csv')
     path_val = os.path.join(os.path.dirname(__file__), 'pa2_valid.csv')
     path_test = os.path.join(os.path.dirname(__file__), 'pa2_test_no_label.csv')
 
     x_train, y_train = import_data(path_train)
-    #x_val, y_val = import_data(path_val)
-    #x_test, y_test = import_data(path_test, test = True)
+    x_val, y_val = import_data(path_val)
+    x_test, _ = import_data(path_test, test = True)
+
+    x_train = np.array([[0.0,0.0], [0.0,1.0], [1.0,0.0], [1.0,1.0]])
+    y_train = np.array([[1,0], [0,1], [0,1], [1,0]])
 
     N, n = x_train.shape
+    smt_net = SMTNet(n, [5])
+
+    formula = smt_net.feed_data(x_train[:10], y_train[:10])
+    regularize = smt_net.non_zero()
+    #regularize = smt_net.regularize()
+    formula = And(formula, regularize)
     
-    """weight_1 = [Symbol("w1_" + str(i) + "_" + str(j), REAL) for i in range(n) for j in range(h1)]
-    bias_1 = [Symbol("b1_" + str(i), REAL) for i in range(h1)]
-    weight_2 = [Symbol("w2_" + str(i) + "_" + str(j), REAL) for i in range(h1) for j in range(2)]
-    bias_2 = [Symbol("b2_" + str(i), REAL) for i in range(2)]
-
-
-    print(weight_1)"""
-
-    smt_net = SMTNet(3, [4])
-
-    regularize = smt_net.regularize()
-    print(regularize)
+    smt_net.solve(formula)
     
-    formula = And(regularize)
+    for i,(w,b) in smt_net.net.items():
+        print("Weight: ", i, '===== \n', w)
+        print("Bias: ", i,'======= \n', b)
+    
+    acc_train = smt_net.test(x_train[:100], y_train[:100])
+    #acc_val = smt_net.test(x_val, y_val)
+    
+    print("Train accuracy: {} \nValidation accuracy: {}:".format(acc_train, acc_val))
 
-    print("Serialization of the formula:")
-    #print(formula)
 
 
-    with Solver(name="msat") as solver:
-        solver.add_assertion(formula)
-        if not solver.solve():
-            print("Domain is not SAT!!!")
-            exit()
-        if solver.solve():
-            for l in letters:
-                print("%s = %s" %(l, solver.get_value(l)))
-        else:
-            print("No solution found")
+
+
