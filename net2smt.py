@@ -13,7 +13,7 @@ class SMTNet:
         self.net = {}
         self.create_weights()
     
-    def create_weights(self):      
+    def create_weights(self):
         for i, h in enumerate(self.dim_list[:-1]):
             weight = [[Symbol("w{}_{}_{}".format(i, j, k), REAL) for j in range(h)] for k in range(self.dim_list[i+1])]
             bias = [Symbol("b{}_{}" .format(i, j), REAL) for j in range(self.dim_list[i+1])]
@@ -21,16 +21,16 @@ class SMTNet:
             self.net[i] = None
         return
     
-    def regularize(self, l = 0.5):       
+    def regularize(self, l = 0.5):
         w_reg_list = []
-        for i, (weight, _) in self.net_formula.items(): 
+        for i, (weight, _) in self.net_formula.items():
             #print(i)
-            w_reg_list.append(Plus([Pow(w, Real(2)) for w_r in weight for w in w_r]))           
+            w_reg_list.append(Plus([Pow(w, Real(2)) for w_r in weight for w in w_r]))
             #print(w_reg_list[-1])
         regularize = And([And(GE(w, Real(-l)), LT(w, Real(l))) for w in w_reg_list])
         return regularize
-        
-    def non_zero(self, l = 0.5): 
+
+    def non_zero(self, l = 0.5):
         w_reg_list = []
         for (weights,bias) in self.net_formula.values():
             for w_r,b in zip(weights, bias):
@@ -41,29 +41,52 @@ class SMTNet:
         regularize = And(w_reg_list)
         print(regularize)
         return regularize
-        
+
     def feed_data(self, X, Y):
         formula = []
         for x, y in zip(X, Y):
+            # x = x[100:103]
             x_formula = []
-            for i, (weight, bias) in self.net_formula.items(): 
+            for i, (weight, bias) in self.net_formula.items():
                 if i == 0:
                     x_hidden = []
                     for r, w_r in enumerate(weight):
-                        x_hidden.append(Plus([Plus(Times(w, Real(float(x[c]))), bias[r]) for c, w in enumerate(w_r)]))
+                        # x_hidden.append(Plus([Plus(Times(w, Real(float(x[c]))), bias[r]) for c, w in enumerate(w_r)]))
+                        node_output = []
+                        for c, w in enumerate(w_r):
+                            var = Plus(Times(w, Real(float(x[c]))), bias[r])
+                            exp_3 = Pow(var, Real(3))
+                            exp_5 = Pow(var, Real(5))
+                            sen_2 = Times(Real(0.25), var)
+                            sen_3 = Times(Real(0.02), exp_3)
+                            sen_4 = Times(Real(0.002), exp_5)
+                            node_output.append(Plus(Real(0.5), sen_2, sen_3, sen_4))
+                        matrix_addition = Plus(node_output[i] for i in range(len(node_output)))
+                        x_hidden.append(matrix_addition)
                     x = x_hidden
                 else:
                     x_hidden = []
                     for r, w_r in enumerate(weight):
-                        x_hidden.append(Plus([Plus(Times(w, x[c]), bias[r]) for c, w in enumerate(w_r)]))
+                        # x_hidden.append(Plus([Plus(Times(w, x[c]), bias[r]) for c, w in enumerate(w_r)]))
+                        node_output = []
+                        for c, w in enumerate(w_r):
+                            var = Plus(Times(w, x[c]), bias[r])
+                            exp_3 = Pow(var, Real(3))
+                            exp_5 = Pow(var, Real(5))
+                            sen_2 = Times(Real(0.25), var)
+                            sen_3 = Times(Real(0.02), exp_3)
+                            sen_4 = Times(Real(0.002), exp_5)
+                            node_output.append(Plus(Real(0.5), sen_2, sen_3, sen_4))
+                        matrix_addition = Plus(node_output[i] for i in range(len(node_output)))
+                        x_hidden.append(matrix_addition)
                     x = x_hidden
                 ## Add activation function
             if np.argmax(y) == 0:
                 x_formula.append(GE(x[0], x[1]))
             else:
-                x_formula.append(GE(x[1], x[0]))                
+                x_formula.append(GE(x[1], x[0]))
         return And(x_formula)
-        
+
     def solve(self, formula):
         print("Serialization of the formula:")
         with Solver(name="z3") as solver:
@@ -77,21 +100,21 @@ class SMTNet:
                     b_curr = []
                     for w_row, b in zip(weight, bias):
                         w_r = []
-                        for w in w_row: 
+                        for w in w_row:
                             value = float(solver.get_value(w).constant_value())
                             w_r.append(value)
-                        b_curr.append(float(solver.get_value(b).constant_value()))  
-                        w_curr.append(w_r)                
-                    self.net[i] = (np.array(w_curr, dtype=float).T, np.array(b_curr, dtype=float))         
+                        b_curr.append(float(solver.get_value(b).constant_value()))
+                        w_curr.append(w_r)
+                    self.net[i] = (np.array(w_curr, dtype=float).T, np.array(b_curr, dtype=float))
             else:
-                print("No solution found")          
-                    
+                print("No solution found")
+
     def test(self, X, Y):
         tp, fp, tn, fn = 0, 0, 0, 0
         for x, y in zip(X, Y):
             output = x
             for i,(w,b) in self.net.items():
-                output = np.dot(w.T, output) + b           
+                output = np.dot(w.T, output) + b
             y_gt, y_pred = np.argmax(y), np.argmax(output)
             if y_gt == 0 and y_pred == 0:
                 tp += 1
@@ -101,8 +124,8 @@ class SMTNet:
                 fp += 1
             else:
                 tn += 1
-        acc = 1.0*(tn + tp)/(tp + tn + fp + fn)        
-        return acc     
+        acc = 1.0*(tn + tp)/(tp + tn + fp + fn)
+        return acc
 
 if __name__ == '__main__':
     acc_train, acc_val = 0.0, 0.0
@@ -114,28 +137,27 @@ if __name__ == '__main__':
     x_val, y_val = import_data(path_val)
     x_test, _ = import_data(path_test, test = True)
 
-    x_train = np.array([[0.0,0.0], [0.0,1.0], [1.0,0.0], [1.0,1.0]])
-    y_train = np.array([[1,0], [0,1], [0,1], [1,0]])
+    # x_train = np.array([[0.0,0.0], [0.0,1.0], [1.0,0.0], [1.0,1.0]])
+    # y_train = np.array([[1,0], [0,1], [0,1], [1,0]])
 
     N, n = x_train.shape
     smt_net = SMTNet(n, [5])
 
-    formula = smt_net.feed_data(x_train[:10], y_train[:10])
+    formula = smt_net.feed_data(x_train[:5], y_train[:5])
     regularize = smt_net.non_zero()
     #regularize = smt_net.regularize()
-    formula = And(formula, regularize)
-    
+    # formula = And(formula, regularize)
+
     smt_net.solve(formula)
-    
+
     for i,(w,b) in smt_net.net.items():
-        print("Weight: ", i, '===== \n', w)
-        print("Bias: ", i,'======= \n', b)
-    
+        print("Weight: ", i, w)
+        print("Bias: ", i, b)
+
     acc_train = smt_net.test(x_train[:100], y_train[:100])
     #acc_val = smt_net.test(x_val, y_val)
-    
-    print("Train accuracy: {} \nValidation accuracy: {}:".format(acc_train, acc_val))
 
+    print("Train accuracy: {} \nValidation accuracy: {}:".format(acc_train, acc_val))
 
 
 
