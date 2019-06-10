@@ -42,7 +42,7 @@ def network_train(x_train, y_train, x_val, y_val, initialized_values=None):
 
 	if initialized_values is not None:
 		for item_i, item in enumerate(initialized_values):
-			model[item_i * 2].weight.data = torch.Tensor(item[1])
+			model[item_i * 2].weight.data = torch.Tensor(item[1].T)
 
 	criterion = torch.nn.BCELoss()
 
@@ -55,29 +55,29 @@ def network_train(x_train, y_train, x_val, y_val, initialized_values=None):
 		loss.backward()
 		optimizer.step()
 
-		print('epoch: ', epoch, ' loss: ', loss.item())
+		print('epoch: ', epoch, ' loss: ', loss.data[0])
 		if epoch % 10 == 0:
-			losses.append(loss.item())
+			losses.append(loss.data[0])
 			acc_train = evaluate(y_pred, y_train)
 			y_pred_val = model(x_val)
 			acc_val = evaluate(y_pred_val, y_val)
 			val_accs.append(acc_val)
 			train_accs.append(acc_train)
-			print('acc val: {}, train: {}'.format(acc_val.item(), acc_train.item()))
-			if len(val_accs) != 0 and acc_val.item() > max(val_accs):
+			# print('acc val: {}, train: {}'.format(acc_val.item(), acc_train.item()))
+			print('acc val: {}, train: {}'.format(acc_val, acc_train))
+			if len(val_accs) != 0 and acc_val > max(val_accs):
 				torch.save(model, "./optimal_model.p")
 
 	plot_data(losses, "training loss")
 	plot_data(val_accs, "validation accuracy")
 	plot_data(train_accs, "training accuracy")
 
-
 def evaluate(Y, Y_gt):
-	Y = torch.argmax(Y, dim = 1)
-	Y_gt = torch.argmax(Y_gt, dim = 1)
-	result = (Y == Y_gt.long()).sum().float()
-	return result/len(Y)
-
+	# Y = torch.argmax(Y, dim = 1)
+	# Y_gt = torch.argmax(Y_gt, dim = 1)
+	# result = (Y == Y_gt.long()).sum().float()
+	result = (Y_gt == Y).data.sum() / 2
+	return float(result)/float(len(Y))
 
 def load_model():
 	model = torch.load("./optimal_model.p")
@@ -103,7 +103,12 @@ def main_network(initialized_values):
 	path_test = os.path.join(os.path.dirname(__file__), 'pa2_test_no_label.csv')
 	
 	x_train, y_train = import_data(path_train)
+
+	# x_train = np.array([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
+	# y_train = np.array([[1, 0], [0, 1], [0, 1], [1, 0]])
+
 	x_val, y_val = import_data(path_val)
 	x_test, _ = import_data(path_test, test = True)
-	network_train(x_train, y_train, x_val, y_val)
+	# network_train(x_train, y_train, x_val, y_val, None)
+	network_train(x_train[:3], y_train[:3], x_val[:2], y_val[:2], initialized_values)
 	load_model()
